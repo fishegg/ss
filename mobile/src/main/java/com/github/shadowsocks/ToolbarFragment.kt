@@ -39,7 +39,5 @@ open class ToolbarFragment : Fragment() {
         toolbar.setNavigationOnClickListener { (activity as MainActivity).drawer.openDrawer(GravityCompat.START) }
     }
 
-    open fun onTrafficUpdated(profileId: Long, txRate: Long, rxRate: Long, txTotal: Long, rxTotal: Long) { }
-
     open fun onBackPressed(): Boolean = false
 }

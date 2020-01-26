@@ -22,33 +22,31 @@ package com.github.shadowsocks.bg
 
 import android.system.ErrnoException
 import android.system.Os
+import android.system.OsConstants
 import android.text.TextUtils
 import android.util.Log
 import com.crashlytics.android.Crashlytics
-import com.github.shadowsocks.Core.app
 import java.io.File
-import java.io.FileNotFoundException
+import java.io.IOException
 
 object Executable {
     const val REDSOCKS = "libredsocks.so"
     const val SS_LOCAL = "libss-local.so"
-    const val SS_TUNNEL = "libss-tunnel.so"
     const val TUN2SOCKS = "libtun2socks.so"
-    const val OVERTURE = "liboverture.so"
 
-    private val EXECUTABLES = setOf(SS_LOCAL, SS_TUNNEL, REDSOCKS, TUN2SOCKS, OVERTURE)
+    private val EXECUTABLES = setOf(SS_LOCAL, REDSOCKS, TUN2SOCKS)
 
     fun killAll() {
-        for (process in File("/proc").listFiles { _, name -> TextUtils.isDigitsOnly(name) }) {
+        for (process in File("/proc").listFiles { _, name -> TextUtils.isDigitsOnly(name) } ?: return) {
             val exe = File(try {
-                File(process, "cmdline").readText()
-            } catch (ignore: FileNotFoundException) {
+                File(process, "cmdline").inputStream().bufferedReader().readText()
+            } catch (_: IOException) {
                 continue
             }.split(Character.MIN_VALUE, limit = 2).first())
-            if (exe.parent == app.applicationInfo.nativeLibraryDir && EXECUTABLES.contains(exe.name)) try {
-                Os.kill(process.name.toInt(), 9)    // SIGKILL
+            if (EXECUTABLES.contains(exe.name)) try {
+                Os.kill(process.name.toInt(), OsConstants.SIGKILL)
             } catch (e: ErrnoException) {
-                if (e.errno != 3) {                 // ESRCH
+                if (e.errno != OsConstants.ESRCH) {
                     e.printStackTrace()
                     Crashlytics.log(Log.WARN, "kill", "SIGKILL ${exe.absolutePath} (${process.name}) failed")
                     Crashlytics.logException(e)

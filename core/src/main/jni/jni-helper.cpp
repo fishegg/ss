@@ -1,87 +1,112 @@
+/*******************************************************************************
+ *                                                                             *
+ *  Copyright (C) 2019 by Max Lv <max.c.lv@gmail.com>                          *
+ *  Copyright (C) 2019 by Mygod Studio <contact-shadowsocks-android@mygod.be>  *
+ *                                                                             *
+ *  This program is free software: you can redistribute it and/or modify       *
+ *  it under the terms of the GNU General Public License as published by       *
+ *  the Free Software Foundation, either version 3 of the License, or          *
+ *  (at your option) any later version.                                        *
+ *                                                                             *
+ *  This program is distributed in the hope that it will be useful,            *
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of             *
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *
+ *  GNU General Public License for more details.                               *
+ *                                                                             *
+ *  You should have received a copy of the GNU General Public License          *
+ *  along with this program. If not, see <http://www.gnu.org/licenses/>.       *
+ *                                                                             *
+ *******************************************************************************/
+
+#include <sstream>
+
 #include "jni.h"
-
-#include <algorithm>
-#include <cerrno>
-
-#include <arpa/inet.h>
-#include <unistd.h>
-#include <sys/un.h>
-#include <ancillary.h>
+#include "re2/re2.h"
 
 using namespace std;
 
-// Based on: https://android.googlesource.com/platform/libcore/+/564c7e8/luni/src/main/native/libcore_io_Linux.cpp#256
-static void throwException(JNIEnv* env, jclass exceptionClass, jmethodID ctor2, const char* functionName, int error) {
-    jstring detailMessage = env->NewStringUTF(functionName);
-    if (detailMessage == NULL) {
-        // Not really much we can do here. We're probably dead in the water,
-        // but let's try to stumble on...
-        env->ExceptionClear();
+struct AclMatcher {
+    stringstream bypassDomainsBuilder, proxyDomainsBuilder;
+    RE2 *bypassDomains, *proxyDomains;
+
+    ~AclMatcher() {
+        if (bypassDomains) delete bypassDomains;
+        if (proxyDomains) delete proxyDomains;
     }
-    env->Throw(reinterpret_cast<jthrowable>(env->NewObject(exceptionClass, ctor2, detailMessage, error)));
-    env->DeleteLocalRef(detailMessage);
+};
+
+bool addDomain(JNIEnv *env, stringstream &domains, jstring regex) {
+    const char *regexChars = env->GetStringUTFChars(regex, nullptr);
+    if (regexChars == nullptr) return false;
+    if (domains.rdbuf()->in_avail()) domains << '|';
+    domains << regexChars;
+    env->ReleaseStringUTFChars(regex, regexChars);
+    return true;
 }
 
-static void throwErrnoException(JNIEnv* env, const char* functionName) {
-    int error = errno;
-    static jclass ErrnoException = static_cast<jclass>(env->NewGlobalRef(
-            env->FindClass("android/system/ErrnoException")));
-    static jmethodID ctor2 = env->GetMethodID(ErrnoException, "<init>", "(Ljava/lang/String;I)V");
-    throwException(env, ErrnoException, ctor2, functionName, error);
+const char *buildRE2(stringstream &domains, RE2 *&out, const RE2::Options &options) {
+    if (domains.rdbuf()->in_avail()) {
+        out = new RE2(domains.str(), options);
+        domains.clear();
+        if (!out->ok()) return out->error().c_str();
+    } else {
+        delete out;
+        out = nullptr;
+    }
+    return nullptr;
 }
 
+#pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-parameter"
 extern "C" {
+JNIEXPORT jlong JNICALL Java_com_github_shadowsocks_acl_AclMatcher_init(JNIEnv *env, jclass clazz) {
+    return reinterpret_cast<jlong>(new AclMatcher());
+}
+
 JNIEXPORT void JNICALL
-        Java_com_github_shadowsocks_JniHelper_sendFd(JNIEnv *env, jobject thiz, jint tun_fd, jstring path) {
-    int fd;
-    struct sockaddr_un addr;
-    const char *sock_str = env->GetStringUTFChars(path, 0);
-
-    if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-        throwErrnoException(env, "socket");
-        goto quit2;
-    }
-
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, sock_str, sizeof(addr.sun_path)-1);
-
-    if (connect(fd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
-        throwErrnoException(env, "connect");
-        goto quit;
-    }
-
-    if (ancil_send_fd(fd, tun_fd)) throwErrnoException(env, "ancil_send_fd");
-
-quit:
-    close(fd);
-quit2:
-    env->ReleaseStringUTFChars(path, sock_str);
-    return;
+Java_com_github_shadowsocks_acl_AclMatcher_close(JNIEnv *env, jclass clazz, jlong handle) {
+    delete reinterpret_cast<AclMatcher *>(handle);
 }
 
-JNIEXPORT jbyteArray JNICALL
-Java_com_github_shadowsocks_JniHelper_parseNumericAddress(JNIEnv *env, jobject thiz, jstring str) {
-    const char *src = env->GetStringUTFChars(str, 0);
-    jbyte dst[max(sizeof(in_addr), sizeof(in6_addr))];
-    jbyteArray arr = nullptr;
-    if (inet_pton(AF_INET, src, dst) == 1) {
-        arr = env->NewByteArray(sizeof(in_addr));
-        env->SetByteArrayRegion(arr, 0, sizeof(in_addr), dst);
-    } else if (inet_pton(AF_INET6, src, dst) == 1) {
-        arr = env->NewByteArray(sizeof(in6_addr));
-        env->SetByteArrayRegion(arr, 0, sizeof(in6_addr), dst);
-    }
-    env->ReleaseStringUTFChars(str, src);
-    return arr;
-}
+JNIEXPORT jboolean JNICALL
+Java_com_github_shadowsocks_acl_AclMatcher_addBypassDomain(JNIEnv *env, jclass clazz, jlong handle,
+                                                           jstring regex) {
+    return static_cast<jboolean>(handle &&
+                                 ::addDomain(env, reinterpret_cast<AclMatcher *>(handle)->bypassDomainsBuilder, regex));
 }
 
-/*
- * This is called by the VM when the shared library is first loaded.
- */
-#pragma ide diagnostic ignored "OCUnusedGlobalDeclarationInspection"
-jint JNI_OnLoad(JavaVM* vm, void* reserved) {
-    return JNI_VERSION_1_6;
+JNIEXPORT jboolean JNICALL
+Java_com_github_shadowsocks_acl_AclMatcher_addProxyDomain(JNIEnv *env, jclass clazz, jlong handle,
+                                                          jstring regex) {
+    return static_cast<jboolean>(handle &&
+                                 ::addDomain(env, reinterpret_cast<AclMatcher *>(handle)->proxyDomainsBuilder, regex));
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_github_shadowsocks_acl_AclMatcher_build(JNIEnv *env, jclass clazz, jlong handle,
+                                                 jlong memory_limit) {
+    if (!handle) return env->NewStringUTF("AclMatcher closed");
+    auto matcher = reinterpret_cast<AclMatcher *>(handle);
+    RE2::Options options;
+    options.set_max_mem(memory_limit);
+    options.set_never_capture(true);
+    const char *e = ::buildRE2(matcher->bypassDomainsBuilder, matcher->bypassDomains, options);
+    if (e) return env->NewStringUTF(e);
+    e = ::buildRE2(matcher->proxyDomainsBuilder, matcher->proxyDomains, options);
+    if (e) return env->NewStringUTF(e);
+    return nullptr;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_github_shadowsocks_acl_AclMatcher_matchHost(JNIEnv *env, jclass clazz, jlong handle,
+                                                     jstring host) {
+    if (!handle) return -1;
+    auto matcher = reinterpret_cast<const AclMatcher *>(handle);
+    const char *hostChars = env->GetStringUTFChars(host, nullptr);
+    jint result = 0;
+    if (matcher->bypassDomains && RE2::PartialMatch(hostChars, *matcher->bypassDomains)) result = 1;
+    else if (matcher->proxyDomains && RE2::PartialMatch(hostChars, *matcher->proxyDomains)) result = 2;
+    env->ReleaseStringUTFChars(host, hostChars);
+    return result;
+}
 }

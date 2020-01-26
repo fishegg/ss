@@ -21,10 +21,12 @@
 package com.github.shadowsocks
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.ShortcutManager
 import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -38,9 +40,7 @@ import androidx.core.util.forEach
 import com.crashlytics.android.Crashlytics
 import com.github.shadowsocks.database.Profile
 import com.github.shadowsocks.database.ProfileManager
-import com.github.shadowsocks.utils.datas
-import com.github.shadowsocks.utils.openBitmap
-import com.github.shadowsocks.utils.printLog
+import com.github.shadowsocks.utils.*
 import com.google.android.gms.common.GoogleApiAvailability
 import com.google.android.gms.samples.vision.barcodereader.BarcodeCapture
 import com.google.android.gms.samples.vision.barcodereader.BarcodeGraphic
@@ -59,6 +59,14 @@ class ScannerActivity : AppCompatActivity(), BarcodeRetriever {
 
     private lateinit var detector: BarcodeDetector
 
+    private fun fallback() {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(
+                    "market://details?id=com.github.sumimakito.awesomeqrsample")))
+        } catch (_: ActivityNotFoundException) { }
+        finish()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         detector = BarcodeDetector.Builder(this)
@@ -71,9 +79,9 @@ class ScannerActivity : AppCompatActivity(), BarcodeRetriever {
             if (dialog == null) {
                 Toast.makeText(this, R.string.common_google_play_services_notification_ticker, Toast.LENGTH_SHORT)
                         .show()
-                finish()
+                fallback()
             } else {
-                dialog.setOnDismissListener { finish() }
+                dialog.setOnDismissListener { fallback() }
                 dialog.show()
             }
             return
@@ -96,7 +104,7 @@ class ScannerActivity : AppCompatActivity(), BarcodeRetriever {
     }
 
     override fun onRetrieved(barcode: Barcode) = runOnUiThread {
-        Profile.findAllUrls(barcode.rawValue, Core.currentProfile).forEach { ProfileManager.createProfile(it) }
+        Profile.findAllUrls(barcode.rawValue, Core.currentProfile?.first).forEach { ProfileManager.createProfile(it) }
         onSupportNavigateUp()
     }
     override fun onRetrievedMultiple(closetToClick: Barcode?, barcode: MutableList<BarcodeGraphic>?) = check(false)
@@ -119,6 +127,11 @@ class ScannerActivity : AppCompatActivity(), BarcodeRetriever {
         else -> false
     }
 
+    /**
+     * See also: https://stackoverflow.com/a/31350642/2245107
+     */
+    override fun shouldUpRecreateTask(targetIntent: Intent?) = super.shouldUpRecreateTask(targetIntent) || isTaskRoot
+
     private fun startImport(manual: Boolean = false) = startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply {
         addCategory(Intent.CATEGORY_OPENABLE)
         type = "image/*"
@@ -127,21 +140,23 @@ class ScannerActivity : AppCompatActivity(), BarcodeRetriever {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         when (requestCode) {
             REQUEST_IMPORT, REQUEST_IMPORT_OR_FINISH -> if (resultCode == Activity.RESULT_OK) {
-                val feature = Core.currentProfile
-                var success = false
-                for (uri in data!!.datas) try {
-                    detector.detect(Frame.Builder().setBitmap(contentResolver.openBitmap(uri)).build())
-                            .forEach { _, barcode ->
-                                Profile.findAllUrls(barcode.rawValue, feature).forEach {
-                                    ProfileManager.createProfile(it)
-                                    success = true
+                val feature = Core.currentProfile?.first
+                try {
+                    var success = false
+                    data!!.datas.forEachTry { uri ->
+                        detector.detect(Frame.Builder().setBitmap(contentResolver.openBitmap(uri)).build())
+                                .forEach { _, barcode ->
+                                    Profile.findAllUrls(barcode.rawValue, feature).forEach {
+                                        ProfileManager.createProfile(it)
+                                        success = true
+                                    }
                                 }
-                            }
+                    }
+                    Toast.makeText(this, if (success) R.string.action_import_msg else R.string.action_import_err,
+                            Toast.LENGTH_SHORT).show()
                 } catch (e: Exception) {
-                    printLog(e)
+                    Toast.makeText(this, e.readableMessage, Toast.LENGTH_LONG).show()
                 }
-                Toast.makeText(this, if (success) R.string.action_import_msg else R.string.action_import_err,
-                        Toast.LENGTH_SHORT).show()
                 onSupportNavigateUp()
             } else if (requestCode == REQUEST_IMPORT_OR_FINISH) onSupportNavigateUp()
             else -> super.onActivityResult(requestCode, resultCode, data)

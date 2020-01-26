@@ -1,8 +1,10 @@
 package com.github.shadowsocks.aidl;
 
-interface IShadowsocksServiceCallback {
-  oneway void stateChanged(int state, String profileName, String msg);
-  oneway void trafficUpdated(long profileId, long txRate, long rxRate, long txTotal, long rxTotal);
+import com.github.shadowsocks.aidl.TrafficStats;
+
+oneway interface IShadowsocksServiceCallback {
+  void stateChanged(int state, String profileName, String msg);
+  void trafficUpdated(long profileId, in TrafficStats stats);
   // Traffic data has persisted to database, listener should refetch their data from database
-  oneway void trafficPersisted(long profileId);
+  void trafficPersisted(long profileId);
 }
