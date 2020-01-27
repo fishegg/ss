@@ -16,7 +16,7 @@ buildscript {
         androidEspressoVersion = '3.2.0'
         versionCode = 5000350
         versionName = '5.0.3-nightly'
-        resConfigs = ['ar', 'es', 'fa', 'fr', 'ja', 'ko', 'ru', 'tr', 'zh-rCN', 'zh-rTW']
+        resConfigs = ['zh-rCN', 'zh-rTW']
     }
 
     repositories {

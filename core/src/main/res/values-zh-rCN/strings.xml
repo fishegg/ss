@@ -22,6 +22,7 @@
 -->
 
 <resources>
+    <string name="app_name">"纸飞机"</string>
     <string name="quick_toggle">"开关"</string>
     <string name="remote_dns">"远程 DNS"</string>
     <string name="stat_summary">"上传: \t%3$s\t↑\t%1$s
@@ -76,7 +77,7 @@
     <string name="settings">"设置选项"</string>
     <string name="faq">"常见问题"</string>
     <string name="about">"关于"</string>
-    <string name="about_title">"影梭 (Shadowsocks) %s"</string>
+    <string name="about_title">"纸飞机 %s"</string>
     <string name="edit">"编辑"</string>
     <string name="share">"分享"</string>
     <string name="add_profile">"添加配置文件"</string>
@@ -93,7 +94,7 @@
     <string name="delete">"删除"</string>
     <string name="delete_confirm_prompt">"您确定要删除此配置文件？"</string>
     <string name="share_qr_nfc">"二维码"</string>
-    <string name="add_profile_dialog">"为影梭添加此配置文件？"</string>
+    <string name="add_profile_dialog">"为纸飞机添加此配置文件？"</string>
     <string name="add_profile_methods_scan_qr_code">"扫描二维码"</string>
     <plurals name="removed">
         <item quantity="other">"已删除 %d 项"</item>
@@ -154,7 +155,7 @@
     <string name="service_proxy">"代理模式"</string>
     <string name="service_transproxy">"透明代理模式"</string>
     <string name="vpn_permission_denied">"创建 VPN 服务权限不足"</string>
-    <string name="auto_connect_summary_v24">"允许 Shadowsocks 随系统启动，建议使用始终开启的 VPN"</string>
+    <string name="auto_connect_summary_v24">"允许 纸飞机 随系统启动，建议使用始终开启的 VPN"</string>
     <string name="direct_boot_aware">"允许锁屏时切换"</string>
     <string name="direct_boot_aware_summary">"选中的配置信息会不那么安全"</string>
     <string name="acl_rule_online_config">"在线规则文件 URL"</string>
